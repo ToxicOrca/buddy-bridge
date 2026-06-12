@@ -105,8 +105,13 @@ class BuddyHttpServer(
         val contentLength = session.headers["content-length"]?.toIntOrNull() ?: 0
         if (contentLength == 0) return "{}"
         val buf = ByteArray(contentLength)
-        session.inputStream.read(buf, 0, contentLength)
-        return String(buf, Charsets.UTF_8)
+        var offset = 0
+        while (offset < contentLength) {
+            val n = session.inputStream.read(buf, offset, contentLength - offset)
+            if (n < 0) break
+            offset += n
+        }
+        return String(buf, 0, offset, Charsets.UTF_8)
     }
 
     private fun jsonResponse(status: Response.IStatus, json: String): Response {

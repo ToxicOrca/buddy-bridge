@@ -108,6 +108,7 @@ class Hub(private val onHeartbeat: (JSONObject) -> Unit) {
                 mutableMapOf("status" to "idle", "msg" to "", "ts" to nowMs(), "tokens" to 0)
             }
             s["status"] = "waiting"
+            s["ts"] = nowMs()  // keep session alive while waiting for approval
         }
         dirty.trySend(Unit)
         return p.id
@@ -137,7 +138,10 @@ class Hub(private val onHeartbeat: (JSONObject) -> Unit) {
             pending.remove(p)
             if (current === p) current = null
             val s = sessions[p.machine to p.session]
-            if (s != null && s["status"] == "waiting") s["status"] = "idle"
+            if (s != null && s["status"] == "waiting") {
+                s["status"] = "idle"
+                s["ts"] = nowMs()  // reset stale clock after approval
+            }
             p.event.complete(Unit)
         }
         dirty.trySend(Unit)
@@ -169,7 +173,8 @@ class Hub(private val onHeartbeat: (JSONObject) -> Unit) {
             // Reap stale sessions
             val reaped = mutableSetOf<String>()
             val staleKeys = sessions.filter { (_, s) ->
-                val limit = if (s["status"] == "running") STALE_RUNNING_SEC else STALE_SESSION_SEC
+                val status = s["status"]
+                val limit = if (status == "running" || status == "waiting") STALE_RUNNING_SEC else STALE_SESSION_SEC
                 now - (s["ts"] as Long) > limit * 1000
             }.keys.toList()
             for (k in staleKeys) {
