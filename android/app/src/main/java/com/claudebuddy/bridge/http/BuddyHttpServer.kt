@@ -3,7 +3,6 @@ package com.claudebuddy.bridge.http
 import com.claudebuddy.bridge.hub.Hub
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import java.security.MessageDigest
 
@@ -47,38 +46,32 @@ class BuddyHttpServer(
             "/event" -> {
                 val data = JSONObject(body)
                 runBlocking {
-                    withTimeout(5000) {
-                        hub.event(
-                            machine = data.optString("machine", "?"),
-                            session = data.optString("session", "?"),
-                            kind = data.optString("kind", "idle"),
-                            msg = data.optString("msg", null),
-                            tokens = if (data.has("tokens")) data.optInt("tokens") else null
-                        )
-                    }
+                    hub.event(
+                        machine = data.optString("machine", "?"),
+                        session = data.optString("session", "?"),
+                        kind = data.optString("kind", "idle"),
+                        msg = data.optString("msg", null),
+                        tokens = if (data.has("tokens")) data.optInt("tokens") else null
+                    )
                 }
                 jsonResponse(Response.Status.OK, """{"ok":true}""")
             }
             "/permission" -> {
                 val data = JSONObject(body)
                 val pid = runBlocking {
-                    withTimeout(5000) {
-                        hub.registerPermission(
-                            machine = data.optString("machine", "?"),
-                            session = data.optString("session", "?"),
-                            tool = data.optString("tool", "?"),
-                            hint = data.optString("hint", "")
-                        )
-                    }
+                    hub.registerPermission(
+                        machine = data.optString("machine", "?"),
+                        session = data.optString("session", "?"),
+                        tool = data.optString("tool", "?"),
+                        hint = data.optString("hint", "")
+                    )
                 }
                 jsonResponse(Response.Status.OK, """{"id":"$pid"}""")
             }
             "/button" -> {
                 val data = JSONObject(body)
                 val ok = runBlocking {
-                    withTimeout(5000) {
-                        hub.resolveCurrent(data.optString("decision", "once"))
-                    }
+                    hub.resolveCurrent(data.optString("decision", "once"))
                 }
                 jsonResponse(Response.Status.OK, """{"ok":$ok}""")
             }
@@ -101,9 +94,7 @@ class BuddyHttpServer(
                 jsonResponse(Response.Status.OK, """{"decision":"$decision"}""")
             }
             "/state" -> {
-                val hb = runBlocking {
-                    withTimeout(5000) { hub.buildHeartbeat() }
-                }
+                val hb = runBlocking { hub.buildHeartbeat() }
                 jsonResponse(Response.Status.OK, hb.toString())
             }
             else -> jsonResponse(Response.Status.NOT_FOUND, """{"ok":false}""")
