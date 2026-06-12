@@ -7,6 +7,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Calendar
 
 /**
  * Session state aggregator and heartbeat builder.
@@ -25,6 +26,13 @@ class Hub(private val onHeartbeat: (JSONObject) -> Unit) {
     }
 
     private val lock = Mutex()
+
+    // Daily token tracking: accumulates tokens across all sessions,
+    // resets at midnight. Each session's last-seen token count is tracked
+    // so we only add the delta when a session reports a new total.
+    private var tokensToday: Long = 0
+    private var tokenDay: Int = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+    private val sessionTokenSnapshot = mutableMapOf<Pair<String, String>, Int>()
 
     // sessions: key = Pair(machine, session) -> mutable state map
     private val sessions = mutableMapOf<Pair<String, String>, MutableMap<String, Any>>()
@@ -53,6 +61,7 @@ class Hub(private val onHeartbeat: (JSONObject) -> Unit) {
                 }
                 "session_end" -> {
                     sessions.remove(key)
+                    sessionTokenSnapshot.remove(key)
                     // Purge entries from this machine
                     val prefix = "$machine >"
                     val filtered = entries.filter { !it.startsWith(prefix) }
@@ -73,6 +82,12 @@ class Hub(private val onHeartbeat: (JSONObject) -> Unit) {
                     }
                     if (tokens != null) {
                         s["tokens"] = tokens
+                        // Accumulate delta into daily total
+                        val prev = sessionTokenSnapshot[key] ?: 0
+                        if (tokens > prev) {
+                            tokensToday += (tokens - prev)
+                        }
+                        sessionTokenSnapshot[key] = tokens
                     }
                 }
             }
@@ -150,6 +165,7 @@ class Hub(private val onHeartbeat: (JSONObject) -> Unit) {
         for (k in staleKeys) {
             reaped.add(k.first)
             sessions.remove(k)
+            sessionTokenSnapshot.remove(k)
         }
         if (reaped.isNotEmpty()) {
             val filtered = entries.filter { e ->
@@ -179,11 +195,20 @@ class Hub(private val onHeartbeat: (JSONObject) -> Unit) {
         val waiting = pending.size
         val tokens = sessions.values.sumOf { (it["tokens"] as? Int) ?: 0 }
 
+        // Reset daily counter at midnight
+        val today = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+        if (today != tokenDay) {
+            tokensToday = 0
+            sessionTokenSnapshot.clear()
+            tokenDay = today
+        }
+
         val hb = JSONObject().apply {
             put("total", total)
             put("running", running)
             put("waiting", waiting)
             put("tokens", tokens)
+            put("tokens_today", tokensToday)
             put("entries", JSONArray(entries.toList()))
         }
 
