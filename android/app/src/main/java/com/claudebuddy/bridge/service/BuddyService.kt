@@ -8,9 +8,11 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import com.claudebuddy.bridge.BuddyApp
 import com.claudebuddy.bridge.MainActivity
@@ -42,6 +44,8 @@ class BuddyService : Service() {
     private var bleManager: BleManager? = null
     private var httpServer: BuddyHttpServer? = null
     private val dedup = HeartbeatDedup()
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     // Owner name — set from UI settings
     var ownerName: String = ""
@@ -111,8 +115,24 @@ class BuddyService : Service() {
         return START_STICKY
     }
 
+    @SuppressLint("WakelockTimeout")
     private fun startBridge() {
         if (bleManager != null) return  // already running
+
+        // Keep WiFi radio alive so the HTTP server stays reachable from the
+        // desktop. Without this, Android sleeps WiFi when the screen is off
+        // and Claude Code's hook POSTs fail silently — sessions get reaped.
+        try {
+            val wm = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "BuddyBridge::HTTP")
+                .apply { acquire() }
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "BuddyBridge::Service")
+                .apply { acquire() }
+            Log.i(TAG, "WiFi lock and wake lock acquired")
+        } catch (e: Exception) {
+            Log.w(TAG, "failed to acquire locks: ${e.message}")
+        }
 
         // Create BLE manager — incoming lines resolve prompts
         val ble = BleManager(
@@ -222,6 +242,10 @@ class BuddyService : Service() {
         hub = null
         bleManager = null
         httpServer = null
+        try { wifiLock?.release() } catch (_: Exception) {}
+        try { wakeLock?.release() } catch (_: Exception) {}
+        wifiLock = null
+        wakeLock = null
         Log.i(TAG, "bridge stopped")
         super.onDestroy()
     }
