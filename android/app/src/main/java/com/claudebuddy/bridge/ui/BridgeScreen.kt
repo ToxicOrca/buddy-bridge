@@ -23,6 +23,8 @@ fun BridgeScreen(
     bleState: BleState,
     bleDeviceName: String?,
     httpRunning: Boolean,
+    deviceBattery: Int = -1,
+    deviceCharging: Boolean = false,
     ownerName: String,
     onOwnerNameChange: (String) -> Unit,
     buddyToken: String = "",
@@ -88,6 +90,20 @@ fun BridgeScreen(
             value = if (httpRunning) "Listening on :8787" else "Stopped",
             color = if (httpRunning) Color(0xFF4CAF50) else Color(0xFFFF5722)
         )
+
+        if (deviceBattery >= 0) {
+            Spacer(modifier = Modifier.height(12.dp))
+            StatusRow(
+                label = "Battery",
+                value = if (deviceCharging) "$deviceBattery% (charging)" else "$deviceBattery%",
+                color = when {
+                    deviceCharging -> Color(0xFF4CAF50)
+                    deviceBattery <= 10 -> Color(0xFFFF5722)
+                    deviceBattery <= 25 -> Color(0xFFFFC107)
+                    else -> Color(0xFF4CAF50)
+                }
+            )
+        }
 
         Spacer(modifier = Modifier.height(48.dp))
 

@@ -81,6 +81,8 @@ class MainActivity : ComponentActivity() {
                 var bleState by remember { mutableStateOf(BleState.DISCONNECTED) }
                 var bleDeviceName by remember { mutableStateOf<String?>(null) }
                 var httpRunning by remember { mutableStateOf(false) }
+                var deviceBattery by remember { mutableStateOf(-1) }
+                var deviceCharging by remember { mutableStateOf(false) }
 
                 LaunchedEffect(svc) {
                     val s = svc
@@ -88,10 +90,14 @@ class MainActivity : ComponentActivity() {
                         launch { s.bleState?.collect { bleState = it } }
                         launch { s.bleDeviceName?.collect { bleDeviceName = it } }
                         launch { s.httpRunning.collect { httpRunning = it } }
+                        launch { s.deviceBattery.collect { deviceBattery = it } }
+                        launch { s.deviceCharging.collect { deviceCharging = it } }
                     } else {
                         bleState = BleState.DISCONNECTED
                         bleDeviceName = null
                         httpRunning = false
+                        deviceBattery = -1
+                        deviceCharging = false
                     }
                 }
 
@@ -126,6 +132,8 @@ class MainActivity : ComponentActivity() {
                     bleState = bleState,
                     bleDeviceName = bleDeviceName,
                     httpRunning = httpRunning,
+                    deviceBattery = deviceBattery,
+                    deviceCharging = deviceCharging,
                     ownerName = ownerName,
                     onOwnerNameChange = { name ->
                         ownerName = name
