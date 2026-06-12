@@ -3,6 +3,7 @@ package com.claudebuddy.bridge.service
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
@@ -28,6 +29,8 @@ class BuddyService : Service() {
     companion object {
         private const val TAG = "BuddyService"
         private const val NOTIF_ID = 1
+        private const val LOW_BATTERY_PCT = 10
+        private const val BATTERY_NOTIF_ID = 2
     }
 
     inner class LocalBinder : Binder() {
@@ -64,6 +67,12 @@ class BuddyService : Service() {
 
     private val _httpRunning = MutableStateFlow(false)
     val httpRunning: StateFlow<Boolean> = _httpRunning
+
+    private val _deviceBattery = MutableStateFlow(-1)  // -1 = unknown
+    val deviceBattery: StateFlow<Int> = _deviceBattery
+    private val _deviceCharging = MutableStateFlow(false)
+    val deviceCharging: StateFlow<Boolean> = _deviceCharging
+    private var lowBatteryNotified = false
 
     val bleState get() = bleManager?.state
     val bleDeviceName get() = bleManager?.deviceName
@@ -215,6 +224,19 @@ class BuddyService : Service() {
     private fun handleDeviceLine(line: String) {
         try {
             val json = JSONObject(line)
+            if (json.has("battery")) {
+                val pct = json.optInt("battery", -1)
+                val charging = json.optBoolean("charging", false)
+                _deviceBattery.value = pct
+                _deviceCharging.value = charging
+                if (pct in 0..LOW_BATTERY_PCT && !charging && !lowBatteryNotified) {
+                    lowBatteryNotified = true
+                    sendLowBatteryNotification(pct)
+                } else if (pct > LOW_BATTERY_PCT || charging) {
+                    lowBatteryNotified = false
+                }
+                return
+            }
             if (json.optString("cmd") == "permission") {
                 val pid = json.optString("id", "")
                 val decision = json.optString("decision", "deny")
@@ -231,6 +253,22 @@ class BuddyService : Service() {
         } catch (e: Exception) {
             Log.w(TAG, "bad device line: $line")
         }
+    }
+
+    private fun sendLowBatteryNotification(pct: Int) {
+        val intent = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = Notification.Builder(this, BuddyApp.CHANNEL_ID)
+            .setContentTitle("Buddy Battery Low")
+            .setContentText("Claude Buddy is at $pct% battery")
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentIntent(intent)
+            .setAutoCancel(true)
+            .build()
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(BATTERY_NOTIF_ID, notification)
+        Log.i(TAG, "low battery notification: $pct%")
     }
 
     override fun onDestroy() {
