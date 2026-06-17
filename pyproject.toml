@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "buddy-bridge"
-version = "0.2.0"
+version = "0.2.1"
 description = "Bridge Claude Code CLI sessions across machines to an M5Stick Hardware Buddy."
 readme = "README.md"
 requires-python = ">=3.9"
