@@ -72,6 +72,8 @@ class BuddyService : Service() {
     val deviceBattery: StateFlow<Int> = _deviceBattery
     private val _deviceCharging = MutableStateFlow(false)
     val deviceCharging: StateFlow<Boolean> = _deviceCharging
+    private val _deviceRemMin = MutableStateFlow(-1)   // -1 = unknown
+    val deviceRemMin: StateFlow<Int> = _deviceRemMin
     private var lowBatteryNotified = false
 
     val bleState get() = bleManager?.state
@@ -227,8 +229,10 @@ class BuddyService : Service() {
             if (json.has("battery")) {
                 val pct = json.optInt("battery", -1)
                 val charging = json.optBoolean("charging", false)
+                val remMin = json.optInt("remMin", -1)
                 _deviceBattery.value = pct
                 _deviceCharging.value = charging
+                _deviceRemMin.value = remMin
                 if (pct in 0..LOW_BATTERY_PCT && !charging && !lowBatteryNotified) {
                     lowBatteryNotified = true
                     sendLowBatteryNotification(pct)

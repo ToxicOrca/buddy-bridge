@@ -198,7 +198,11 @@ class BleManager(
             }
         }
 
-        gatt = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
+        // autoConnect=true for bonded devices: Android's BLE stack handles
+        // transient disconnects (e.g. M5 light sleep) internally instead of
+        // reporting them, preventing the frequent scan/reconnect cycling.
+        val auto = device.bondState == BluetoothDevice.BOND_BONDED
+        gatt = device.connectGatt(context, auto, callback, BluetoothDevice.TRANSPORT_LE)
         val g = gatt ?: return
 
         // Wait for connection
