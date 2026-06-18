@@ -55,6 +55,7 @@ class BleManager(
     private val lineBuffer = LineBuffer()
     private val writeQueue = kotlinx.coroutines.channels.Channel<ByteArray>(64)
     private var writeJob: Job? = null
+    private var lastDeviceAddress: String? = null  // skip scan for known bonded devices
 
     // Called when we have a connected, subscribed link — service wires this
     var onConnected: (() -> Unit)? = null
@@ -148,14 +149,26 @@ class BleManager(
             Log.w(TAG, "BLE permissions not granted, skipping connect cycle")
             return
         }
-        // Scan
-        _state.value = BleState.SCANNING
-        val device = scan() ?: run {
-            Log.i(TAG, "no device found advertising '${namePrefix}*'")
-            return
+
+        // For a known bonded device, reconnect by address without scanning.
+        // Scanning is expensive (15s timeout) and unnecessary after first pair.
+        val device: BluetoothDevice
+        val knownAddr = lastDeviceAddress
+        val bonded = adapter?.bondedDevices?.find { it.address == knownAddr }
+        if (bonded != null) {
+            device = bonded
+            _state.value = BleState.CONNECTING
+            _deviceName.value = device.name
+            Log.i(TAG, "reconnecting to bonded ${device.name} [${device.address}]")
+        } else {
+            _state.value = BleState.SCANNING
+            device = scan() ?: run {
+                Log.i(TAG, "no device found advertising '${namePrefix}*'")
+                return
+            }
+            _deviceName.value = device.name
+            Log.i(TAG, "found ${device.name} [${device.address}]")
         }
-        _deviceName.value = device.name
-        Log.i(TAG, "found ${device.name} [${device.address}]")
 
         // Connect
         _state.value = BleState.CONNECTING
@@ -205,9 +218,11 @@ class BleManager(
         gatt = device.connectGatt(context, auto, callback, BluetoothDevice.TRANSPORT_LE)
         val g = gatt ?: return
 
-        // Wait for connection
-        if (!withTimeoutOrNull(10000) { connected.await() }.let { it == true }) {
-            Log.i(TAG, "connection failed")
+        // Wait for connection — autoConnect can take longer as Android waits
+        // for the device to be seen passively rather than actively connecting.
+        val connectTimeout = if (auto) 30000L else 10000L
+        if (!withTimeoutOrNull(connectTimeout) { connected.await() }.let { it == true }) {
+            Log.i(TAG, "connection failed (auto=$auto)")
             return
         }
 
@@ -267,6 +282,7 @@ class BleManager(
         }
 
         _state.value = BleState.CONNECTED
+        lastDeviceAddress = device.address
         Log.i(TAG, "connected and subscribed")
 
         // Start write processor
