@@ -209,11 +209,17 @@ class Hub(private val onHeartbeat: (JSONObject) -> Unit) {
             val waiting = pending.size
             val tokens = sessions.values.sumOf { (it["tokens"] as? Int) ?: 0 }
 
-            // Reset daily counter at midnight
+            // Reset daily counter at midnight. Re-snapshot current session
+            // token counts so sessions spanning midnight don't re-add their
+            // entire cumulative total as today's usage.
             val today = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
             if (today != tokenDay) {
                 tokensToday = 0
                 sessionTokenSnapshot.clear()
+                for ((key, s) in sessions) {
+                    val t = (s["tokens"] as? Int) ?: 0
+                    if (t > 0) sessionTokenSnapshot[key] = t
+                }
                 tokenDay = today
             }
 

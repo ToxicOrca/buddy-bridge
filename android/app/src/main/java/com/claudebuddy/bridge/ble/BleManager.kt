@@ -77,12 +77,17 @@ class BleManager(
     fun stop() {
         connectJob?.cancel()
         writeJob?.cancel()
-        disconnect()
+        disconnect(fullClose = true)
     }
 
-    private fun disconnect() {
-        gatt?.close()
-        gatt = null
+    private fun disconnect(fullClose: Boolean = true) {
+        if (fullClose) {
+            gatt?.close()
+            gatt = null
+        } else {
+            // Soft disconnect: keep GATT object for faster reconnect
+            gatt?.disconnect()
+        }
         rxChar = null
         negotiatedMtu = 23
         _state.value = BleState.DISCONNECTED
@@ -139,7 +144,9 @@ class BleManager(
             } catch (e: Exception) {
                 Log.i(TAG, "relay error: ${e.message}")
             }
-            disconnect()
+            // Soft disconnect for bonded devices: keep GATT for faster reconnect.
+            // Full close only if we have no known device (first connect failed).
+            disconnect(fullClose = lastDeviceAddress == null)
             delay(RETRY_DELAY_MS)
         }
     }
