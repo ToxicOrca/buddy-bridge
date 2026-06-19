@@ -33,7 +33,11 @@ LOCK_PORT = 8791
 LOGFILE = _config.config_dir() / "relay.log"
 _lock = None
 
-HEARTBEAT_TIMEOUT = 45.0   # no hub line for this long -> reconnect the STREAM
+HEARTBEAT_TIMEOUT = 45.0   # no hub line for this long -> reconnect the STREAM.
+                           # The hub now keepalives the idle stream (re-sends a
+                           # heartbeat every KEEPALIVE_FLOOR_SEC instead of going
+                           # quiet), so 45s no longer false-trips on idle and is
+                           # kept low for fast dead-stream detection.
 BLE_WRITE_TIMEOUT = 5.0    # a single BLE write blocking this long -> drop the link
 BLE_CONNECT_TIMEOUT = 20.0     # bound BleakClient.connect so a hang can't wedge us
 BLE_DISCONNECT_TIMEOUT = 10.0  # bound disconnect so cleanup always completes

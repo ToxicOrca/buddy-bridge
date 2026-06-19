@@ -505,7 +505,18 @@ def make_handler(hub, token=""):
             client = transport.attach()
             try:
                 while True:
-                    obj = client.get(timeout=KEEPALIVE_FLOOR_SEC)
+                    try:
+                        obj = client.get(timeout=KEEPALIVE_FLOOR_SEC)
+                    except queue.Empty:
+                        # Idle keepalive. The queue legitimately goes quiet when
+                        # nothing changes (send() dedups, and its floor races this
+                        # get() timeout). Don't drop the stream — re-send the
+                        # current heartbeat so the relay's liveness watchdog never
+                        # trips. This is what stops the ~once-a-minute idle stream
+                        # flap (relay logged "no hub data" then reconnected).
+                        obj = hub.build_heartbeat() if hub else None
+                        if obj is None:
+                            continue
                     if obj is None:           # displaced by a newer relay
                         break
                     chunk = (json.dumps(obj) + "\n").encode()
@@ -513,7 +524,7 @@ def make_handler(hub, token=""):
                     self.wfile.write(chunk)
                     self.wfile.write(b"\r\n")
                     self.wfile.flush()
-            except (queue.Empty, BrokenPipeError, ConnectionResetError, OSError):
+            except (BrokenPipeError, ConnectionResetError, OSError):
                 pass
             finally:
                 transport.detach(client)
